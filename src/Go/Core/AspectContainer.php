@@ -172,6 +172,12 @@ class AspectContainer
      */
     public function getAdvicesForClass($class)
     {
+        $key = "advices:" . $class;
+        $cached = apc_fetch($key, $success);
+        if ($success) {
+            echo "Taken from cache:", "<br>", PHP_EOL;
+            return $cached;
+        }
         $classAdvices = array();
         if (!$class instanceof ReflectionClass && !$class instanceof ParsedReflectionClass) {
             $class = new ReflectionClass($class);
@@ -191,6 +197,7 @@ class AspectContainer
                 }
             }
         }
+        apc_store($key, $classAdvices);
         return $classAdvices;
     }
 

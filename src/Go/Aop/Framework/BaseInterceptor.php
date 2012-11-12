@@ -15,7 +15,7 @@ use Go\Aop\Intercept\Interceptor;
 /**
  * @package go
  */
-class BaseInterceptor extends BaseAdvice implements Interceptor
+class BaseInterceptor extends BaseAdvice implements Interceptor, \Serializable
 {
     /**
      * Name of the aspect
@@ -52,5 +52,43 @@ class BaseInterceptor extends BaseAdvice implements Interceptor
 
         $this->adviceMethod = $adviceMethod;
         $this->pointcut     = $pointcut;
+    }
+
+    /**
+     * (PHP 5 &gt;= 5.1.0)<br/>
+     * String representation of object
+     * @link http://php.net/manual/en/serializable.serialize.php
+     * @return string the string representation of the object or null
+     */
+    public function serialize()
+    {
+        $refAdvice = new \ReflectionFunction($this->adviceMethod);
+        $aspect = $refAdvice->getClosureThis();
+        $dataToSerialize = get_object_vars($this) + array(
+            'refMethod' => array(
+                $aspect,
+                $refAdvice->name,
+            )
+        );
+        unset($dataToSerialize['adviceMethod']);
+        return serialize($dataToSerialize);
+    }
+
+    /**
+     * (PHP 5 &gt;= 5.1.0)<br/>
+     * Constructs the object
+     * @link http://php.net/manual/en/serializable.unserialize.php
+     * @param string $serialized <p>
+     * The string representation of the object.
+     * </p>
+     * @return mixed the original value unserialized.
+     */
+    public function unserialize($serialized)
+    {
+        $data = unserialize($serialized);
+        list ($aspect, $adviceName) = $data['refMethod'];
+        $refMethod = new \ReflectionMethod($aspect, $adviceName);
+        $adviceMethod = $refMethod->getClosure($aspect);
+        $this->__construct($adviceMethod, $data['pointcut']);
     }
 }
