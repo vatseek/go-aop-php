@@ -235,6 +235,21 @@ class GeneralAspectLoaderExtension implements AspectLoaderExtension
             return $pointcut;
         }
 
+        // initialization(Go\Aspects\Blog\Package\*) : This will match all initialization of all classes of Go\Aspects\Blog\Package.
+        // initialization(Go\Aspects\Blog\Package\**) : This will match all initialization of all classes of Go\Aspects\Blog\Package and its sub packages. The only difference is the extra dot(.) after package.
+        // initialization(Go\Aspects\Blog\Package\DemoClass) : This will match initialization of class DemoClass.
+        // initialization(DemoInterface+) : This will match initialization of classes which implement DemoInterface.
+        static $initializationReg = '/
+            ^initialization\(
+                (?P<class>[\w\\\*]+)
+                (?P<children>\+?)
+            \)$/x';
+
+        if (preg_match($initializationReg, $metaInformation->value, $matches)) {
+            $pointcut = new Support\WithinMethodPointcut($matches['class'], (bool) $matches['children']);
+            return $pointcut;
+        }
+
         // access(public Example\Aspect\*->property*)
         // access(protected Test\Class*->someProtected*Property)
         static $propertyReg = '/

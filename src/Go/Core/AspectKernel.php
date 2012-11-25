@@ -184,6 +184,9 @@ abstract class AspectKernel
      */
     protected function registerTransformers(SourceTransformingLoader $sourceLoader)
     {
+        $broker = new TokenReflection\Broker(
+            new TokenReflection\Broker\Backend\Memory()
+        );
         return array(
             new FilterInjectorTransformer(
                 $this->options['appDir'],
@@ -191,11 +194,12 @@ abstract class AspectKernel
                 $sourceLoader->getId()
             ),
             new AopProxyTransformer(
-                new TokenReflection\Broker(
-                    new TokenReflection\Broker\Backend\Memory()
-                ),
+                $broker,
                 $this->options['includePaths']
             ),
+            new \Go\Instrument\Transformer\ConstructorExecutionTransformer(
+                $broker
+            )
         );
     }
 
