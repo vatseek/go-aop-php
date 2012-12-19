@@ -14,6 +14,8 @@ namespace Go\Instrument\Transformer;
  * @package go
  * @subpackage instrument
  */
+use Go\Core\AspectKernel;
+
 class FilterInjectorTransformer implements SourceTransformer
 {
 
@@ -53,15 +55,21 @@ class FilterInjectorTransformer implements SourceTransformer
     protected static $configured = false;
 
     /**
+     * Debug mode
+     *
+     * @var bool
+     */
+    protected static $debug = false;
+
+    /**
      * Class constructor
      *
-     * @param string $rootPath Path to the root of site
-     * @param string $rewriteToPath Path to rewrite to (typically, this will be the cache)
+     * @param array $options Configuration options from kernel
      * @param string $filterName Name of the filter to inject
      */
-    public function __construct($rootPath, $rewriteToPath, $filterName)
+    public function __construct(array $options, $filterName)
     {
-        self::configure($rootPath, $rewriteToPath, $filterName);
+        self::configure($options, $filterName);
     }
 
     /**
@@ -71,16 +79,18 @@ class FilterInjectorTransformer implements SourceTransformer
      * @param string $rewriteToPath Path to rewrite to (typically, this will be the cache)
      * @param string $filterName Name of the filter to inject
      */
-    public static function configure($rootPath, $rewriteToPath, $filterName)
+    public static function configure(array $options, $filterName)
     {
         if (self::$configured) {
             throw new \RuntimeException("Filter injector can be configured only once.");
         }
+        $rewriteToPath = $options['cacheDir'];
         if ($rewriteToPath) {
             self::$rewriteToPath = realpath($rewriteToPath);
         }
-        self::$rootPath   = realpath($rootPath);
+        self::$rootPath   = realpath($options['appDir']);
         self::$filterName = $filterName;
+        self::$debug      = $options['debug'];
         self::$configured = true;
     }
 
@@ -95,19 +105,16 @@ class FilterInjectorTransformer implements SourceTransformer
     public static function rewrite($resource)
     {
         // If cache is disabled, then use on-fly method
-        if (!self::$rewriteToPath) {
+        if (!self::$rewriteToPath || self::$debug) {
             return self::PHP_FILTER_READ . self::$filterName . "/resource=" . $resource;
         }
 
-        $relativeToRoot = stream_resolve_include_path($resource);
-        $relativeToRoot = str_replace(self::$rootPath, self::$rewriteToPath, $relativeToRoot);
+        $newResource = stream_resolve_include_path($resource);
+        $newResource = str_replace(self::$rootPath, self::$rewriteToPath, $newResource);
 
-        $newResource = $relativeToRoot;
-        // TODO: add more accurate cache invalidation, like in Symfony2
-        if (!file_exists($newResource) || filemtime($newResource) < filemtime($resource)) {
-            @mkdir(dirname($newResource), 0770, true);
-            $content = file_get_contents(self::PHP_FILTER_READ . self::$filterName . "/resource=" . $resource);
-            file_put_contents($newResource, $content);
+        // Trigger creation of cache, this will create a cache file with $newResource name
+        if (!file_exists($newResource)) {
+            file_get_contents(self::PHP_FILTER_READ . self::$filterName . "/resource=" . $resource);
         }
         return $newResource;
     }
@@ -136,7 +143,7 @@ class FilterInjectorTransformer implements SourceTransformer
         $transformedSource = '';
         $isWaitingEnd      = false;
         foreach ($tokenStream as $token) {
-            if ($isWaitingEnd && $token === ';') {
+            if ($isWaitingEnd && ($token === ';' || $token === ',')) {
                 $isWaitingEnd = false;
                 $transformedSource .= ')';
             }

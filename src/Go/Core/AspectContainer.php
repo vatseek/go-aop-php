@@ -61,6 +61,27 @@ class AspectContainer
     protected $services = array();
 
     /**
+     * List of registered aspects
+     *
+     * @var array
+     */
+    protected $aspects = array();
+
+    /**
+     * List of resources for application
+     *
+     * @var array
+     */
+    protected $resources = array();
+
+    /**
+     * Cached timestamp for resources
+     *
+     * @var integer
+     */
+    protected $maxTimestamp = 0;
+
+    /**
      * Set a service into the container
      *
      * @param string $id Key for service
@@ -152,15 +173,70 @@ class AspectContainer
     }
 
     /**
+     * Returns an aspect by id or class name
+     *
+     * @param string $aspectName Aspect name
+     *
+     * @throws \OutOfBoundsException If aspect is unknown
+     *
+     * @return Aop\Aspect
+     */
+    public function getAspect($aspectName)
+    {
+        if (!isset($this->aspects[$aspectName])) {
+            throw new \OutOfBoundsException("Unknown aspect {$aspectName}");
+        }
+        return $this->aspects[$aspectName];
+    }
+
+    /**
      * Register an aspect in the container
      *
      * @param Aop\Aspect $aspect Instance of concrete aspect
+     * @param string $id Key for aspect
+     *
+     * @throws \LogicException if aspect was already registered
      */
     public function registerAspect(Aop\Aspect $aspect)
     {
+        $aspectName = get_class($aspect);
+        if (!empty($this->aspects[$aspectName])) {
+            throw new \LogicException("Only one instance of single aspect can be registered at once");
+        }
+
         /** @var $loader AspectLoader */
         $loader = $this->get('aspect.loader');
         $loader->load($aspect);
+
+        $this->aspects[$aspectName] = $aspect;
+    }
+
+    /**
+     * Add an resource for container
+     *
+     * TODO: use symfony/config component for creating the cache
+     *
+     * Resources is used to check the freshness of cache
+     */
+    public function addResource($resource)
+    {
+        $this->resources[]  = $resource;
+        $this->maxTimestamp = 0;
+    }
+
+    /**
+     * Checks the freshness of container
+     *
+     * @param integer $timestamp
+     *
+     * @return bool Whether or not container is fresh
+     */
+    public function isFresh($timestamp)
+    {
+        if (!$this->maxTimestamp && $this->resources) {
+            $this->maxTimestamp = max(array_map('filemtime', $this->resources));
+        }
+        return $this->maxTimestamp < $timestamp;
     }
 
     /**

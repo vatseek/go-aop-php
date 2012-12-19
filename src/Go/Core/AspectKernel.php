@@ -12,6 +12,7 @@ use Go\Instrument\ClassLoading\UniversalClassLoader;
 use Go\Instrument\ClassLoading\SourceTransformingLoader;
 use Go\Instrument\Transformer\SourceTransformer;
 use Go\Instrument\Transformer\AopProxyTransformer;
+use Go\Instrument\Transformer\CachingTransformer;
 use Go\Instrument\Transformer\FilterInjectorTransformer;
 use Go\Instrument\Transformer\MagicConstantTransformer;
 
@@ -19,6 +20,12 @@ use Doctrine\Common\Annotations\AnnotationReader;
 use Doctrine\Common\Annotations\AnnotationRegistry;
 
 use TokenReflection;
+
+/**
+ * Whether or not we have a modern PHP
+ */
+define('IS_MODERN_PHP', version_compare(PHP_VERSION, '5.4.0') >= 0);
+
 
 /**
  * Abstract aspect kernel is used to prepare an application to work with aspects.
@@ -101,6 +108,9 @@ abstract class AspectKernel
         // Register general aspect loader extension
         $aspectLoader->registerLoaderExtension(new GeneralAspectLoaderExtension());
 
+        // Register kernel resources in the container
+        $this->addKernelResourcesToContainer($container);
+
         // Register all AOP configuration in the container
         $this->configureAop($container);
     }
@@ -131,6 +141,8 @@ abstract class AspectKernel
                     'TokenReflection'  => realpath(__DIR__ . '/../../../vendor/andrewsville/php-token-reflection/'),
                     'Doctrine\\Common' => realpath(__DIR__ . '/../../../vendor/doctrine/common/lib/')
                 ),
+                //Debug mode
+                'debug' => false,
                 // Default application directory
                 'appDir' => __DIR__ . '/../../../',
                 // Cache directory for Go! generated classes
@@ -185,22 +197,27 @@ abstract class AspectKernel
      */
     protected function registerTransformers(SourceTransformingLoader $sourceLoader)
     {
-        return array(
+        $sourceTransformers = array(
             new FilterInjectorTransformer(
-                $this->options['appDir'],
-                $this->options['cacheDir'],
+                $this->options,
                 $sourceLoader->getId()
             ),
             new MagicConstantTransformer(
-                $this->options['appDir'],
-                $this->options['cacheDir']
+                $this->options
             ),
             new AopProxyTransformer(
+                $this->options,
                 new TokenReflection\Broker(
                     new TokenReflection\Broker\Backend\Memory()
-                ),
-                $this->options['includePaths']
-            ),
+                )
+            )
+        );
+
+        return array(
+            new CachingTransformer(
+                $this->options,
+                $sourceTransformers
+            )
         );
     }
 
@@ -228,5 +245,19 @@ abstract class AspectKernel
             return class_exists($class, false);
         });
 
+    }
+
+    /**
+     * Add resources for kernel
+     *
+     * @param AspectContainer $container
+     */
+    protected function addKernelResourcesToContainer(AspectContainer $container)
+    {
+        $trace    = debug_backtrace();
+        $refClass = new \ReflectionObject($this);
+
+        $container->addResource($trace[1]['file']);
+        $container->addResource($refClass->getFileName());
     }
 }
