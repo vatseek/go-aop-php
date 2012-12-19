@@ -34,13 +34,12 @@ class MagicConstantTransformer implements SourceTransformer
     /**
      * Class constructor
      *
-     * @param string $rootPath Path to the root of site
-     * @param string $rewriteToPath Path to rewrite to (typically, this will be the cache)
+     * @param array $options Configuration options from kernel
      */
-    public function __construct($rootPath, $rewriteToPath)
+    public function __construct(array $options)
     {
-        self::$rootPath      = realpath($rootPath);
-        self::$rewriteToPath = realpath($rewriteToPath);
+        self::$rootPath      = realpath($options['appDir']);
+        self::$rewriteToPath = realpath($options['cacheDir']);
     }
 
     /**
@@ -80,7 +79,11 @@ class MagicConstantTransformer implements SourceTransformer
 
         if ($hasReflecitionFilename) {
             // TODO: need to make more reliable solution
-            $source = preg_replace('/([\w\$\-\>\:]*?getFileName\(\))/', '\\' . __CLASS__ . '::resolveFileName(\1)', $source);
+            $source = preg_replace(
+                '/\$([\w\$\-\>\:\(\)]*?getFileName\(\))/S',
+                '\\' . __CLASS__ . '::resolveFileName(\$\1)',
+                $source
+            );
         }
 
         return $source;

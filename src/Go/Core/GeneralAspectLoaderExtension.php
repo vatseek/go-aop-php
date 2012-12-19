@@ -84,7 +84,8 @@ class GeneralAspectLoaderExtension implements AspectLoaderExtension
      */
     public function supports(Aspect $aspect, $reflection, $metaInformation = null)
     {
-        return $metaInformation instanceof Annotation\Interceptor;
+        return $metaInformation instanceof Annotation\Interceptor
+                || $metaInformation instanceof Annotation\Pointcut;
     }
 
     /**
@@ -97,25 +98,29 @@ class GeneralAspectLoaderExtension implements AspectLoaderExtension
      */
     public function load(AspectContainer $container, Aspect $aspect, $reflection, $metaInformation = null)
     {
-        $adviceCallback = $this->getAdvice($aspect, $reflection);
-
         // TODO: use general pointcut parser here instead of hardcoded regular expressions
-        $pointcut = $this->parsePointcut($metaInformation);
+        $pointcut       = $this->parsePointcut($container, $metaInformation);
+        $adviceCallback = Framework\BaseAdvice::fromAspectReflection($aspect, $reflection);
 
         switch (true) {
+            // Register a pointcut by its name
+            case ($metaInformation instanceof Annotation\Pointcut):
+                $container->registerPointcut($pointcut, $metaInformation->id);
+                break;
+
             case ($pointcut instanceof MethodMatcher):
                 $advice = $this->getMethodInterceptor($metaInformation, $adviceCallback);
+                $container->registerAdvisor(new DefaultPointcutAdvisor($pointcut, $advice));
                 break;
 
             case ($pointcut instanceof PropertyMatcher):
                 $advice = $this->getPropertyInterceptor($metaInformation, $adviceCallback);
+                $container->registerAdvisor(new DefaultPointcutAdvisor($pointcut, $advice));
                 break;
 
             default:
                 throw new \UnexpectedValueException("Unsupported pointcut class: " . get_class($pointcut));
         }
-
-        $container->registerAdvisor(new DefaultPointcutAdvisor($pointcut, $advice));
     }
 
     /**
@@ -168,35 +173,25 @@ class GeneralAspectLoaderExtension implements AspectLoaderExtension
     }
 
     /**
-     * Returns an advice from aspect
-     *
-     * @param Aspect $aspect Aspect instance
-     * @param ReflectionMethod $refMethod Reflection method of aspect
-     *
-     * @return callable Advice to call
-     */
-    private function getAdvice(Aspect $aspect, ReflectionMethod $refMethod)
-    {
-        if (version_compare(PHP_VERSION, '5.4.0') >= 0) {
-            return $refMethod->getClosure($aspect);
-        } else {
-            return function () use ($aspect, $refMethod) {
-                return $refMethod->invokeArgs($aspect, func_get_args());
-            };
-        }
-    }
-
-    /**
      * Temporary method for parsing pointcuts
      *
      * @todo Replace this method with pointcut parser
-     * @param Annotation\BaseAnnotation $metaInformation
+     *
+     * @param AspectContainer $container Container
+     * @param Annotation\BaseAnnotation|Annotation\BaseInterceptor $metaInformation
      *
      * @throws \UnexpectedValueException If pointcut can not be parsed
      * @return \Go\Aop\Pointcut
      */
-    private function parsePointcut($metaInformation)
+    private function parsePointcut(AspectContainer $container, $metaInformation)
     {
+        if (isset($metaInformation->pointcut)) {
+            if ($metaInformation->value) {
+                throw new \UnexpectedValueException("Can not use both `value` and `pointcut` properties");
+            }
+            return $container->getPointcut($metaInformation->pointcut);
+        }
+
         // execution(public Example\Aspect\*->method*())
         // execution(protected Test\Class*::someStatic*Method())
         static $executionReg = '/

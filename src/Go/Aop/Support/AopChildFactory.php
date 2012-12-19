@@ -28,12 +28,6 @@ use TokenReflection\ReflectionParameter as ParsedReflectionParameter;
 use TokenReflection\ReflectionProperty as ParsedReflectionProperty;
 
 /**
- * Whether or not we have a modern PHP
- */
-define('IS_MODERN_PHP', version_compare(PHP_VERSION, '5.4.0') >= 0);
-
-
-/**
  * AOP Factory that is used to generate child code from joinpoints
  */
 class AopChildFactory extends AbstractChildCreator
@@ -169,25 +163,9 @@ class AopChildFactory extends AbstractChildCreator
     protected function overrideMethod($method)
     {
         // temporary disable override of final methods
-        if (!$method->isFinal() && !$method->isAbstract() && !$this->hasParametersByReference($method)) {
+        if (!$method->isFinal() && !$method->isAbstract()) {
             $this->override($method->name, $this->getJoinpointInvocationBody($method));
         }
-    }
-
-    /**
-     * Checks if method has parameters by reference
-     *
-     * @param ReflectionMethod|ParsedReflectionMethod $method Method reflection
-     *
-     * @return bool true if method uses parameters by reference
-     */
-    private function hasParametersByReference($method)
-    {
-        $paramsByReference = array_filter($method->getParameters(), function ($param) {
-            /** @var $param ReflectionParameter|ParsedReflectionParameter */
-            return $param->isPassedByReference();
-        });
-        return (bool) $paramsByReference;
     }
 
     /**
@@ -203,7 +181,9 @@ class AopChildFactory extends AbstractChildCreator
         $scope    = $isStatic ? 'get_called_class()' : '$this';
 
         $args = join(', ', array_map(function ($param) {
-            return '$' . $param->name;
+            /** @var $param ReflectionParameter|ParsedReflectionParameter */
+            $byReference = $param->isPassedByReference() ? '&' : '';
+            return $byReference . '$' . $param->name;
         }, $method->getParameters()));
 
         $args = $scope . ($args ? ", array($args)" : '');
